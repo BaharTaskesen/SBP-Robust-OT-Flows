@@ -1,62 +1,9 @@
 import numpy as np
 
+
 # ============================================================
-# Basic utilities: target support and base distribution
+# Semi-discrete OT: approximate Kantorovich potential φ
 # ============================================================
-
-def make_target_points(n_modes=8, radius=2.0):
-    """
-    Arrange N target points on a circle of given radius.
-    This defines the discrete target distribution:
-        p_data = sum_i ν_i δ_{y_i}.
-    """
-    angles = np.linspace(0.0, 2.0 * np.pi, n_modes, endpoint=False)
-    ys = np.stack([radius * np.cos(angles), radius * np.sin(angles)], axis=1)
-    # And maybe give the center a smaller or equal weight in pdata
-
-    return ys  # shape (N, 2)
-
-def make_paired_targets(radius=2.0, pair_sep=0.08, n_pairs=4):
-    # n_pairs pairs -> 2*n_pairs targets
-    base_angles = np.linspace(0.0, 2*np.pi, n_pairs, endpoint=False)
-    ys_list = []
-    for theta in base_angles:
-        ys_list.append([
-            radius * np.cos(theta - pair_sep/2),
-            radius * np.sin(theta - pair_sep/2),
-        ])
-        ys_list.append([
-            radius * np.cos(theta + pair_sep/2),
-            radius * np.sin(theta + pair_sep/2),
-        ])
-    ys = np.array(ys_list)  # shape (2*n_pairs, 2)
-    return ys
-def make_square_targets(side=3.0, points_per_edge=4):
-    half = side / 2.0
-    xs = np.linspace(-half, half, points_per_edge)
-    ys = np.linspace(-half, half, points_per_edge)
-
-    # four edges, no duplicate corners
-    pts = []
-    for x in xs:
-        pts.append([x, -half])
-        pts.append([x,  half])
-    for y in ys[1:-1]:
-        pts.append([-half, y])
-        pts.append([ half, y])
-    return np.array(pts)
-
-# ys = make_square_targets()
-def make_noisy_ring(n_modes=64, radius=2.0, jitter=0.25, rng=None):
-    if rng is None:
-        rng = np.random.default_rng(0)
-    angles = np.linspace(0.0, 2*np.pi, n_modes, endpoint=False)
-    radii = radius + rng.normal(scale=jitter, size=n_modes)
-    ys = np.stack([radii * np.cos(angles), radii * np.sin(angles)], axis=1)
-    return ys
-
-# ys = make_noisy_ring()
-
 
 def sample_base(n_samples, dim=2, rng=None):
     """
@@ -66,12 +13,9 @@ def sample_base(n_samples, dim=2, rng=None):
         rng = np.random.default_rng()
     return rng.normal(size=(n_samples, dim))
 
-# ============================================================
-# Semi-discrete OT: approximate Kantorovich potential φ
-# ============================================================
-
 def compute_kantorovich_potential(
-    ys,
+    ys, 
+    nu=0,
     n_iters=2000,
     batch_size=2048,
     lr=0.1,
@@ -83,7 +27,7 @@ def compute_kantorovich_potential(
 
     We maximize the dual:
         F(φ) = sum_i ν_i φ_i - E_{x~p_base}[ max_j (φ_j - 0.5 ||x - y_j||^2) ]
-    where p_base = N(0, I) and ν_i = 1/N.
+    where p_base = N(0, I) and (if not specified) ν_i = 1/N.
 
     Gradient:
         dF/dφ_i = ν_i - P(argmax_j(...) = i).
@@ -93,7 +37,8 @@ def compute_kantorovich_potential(
     rng = np.random.default_rng(seed)
     N, dim = ys.shape
     phi = np.zeros(N, dtype=np.float64)
-    nu = np.ones(N, dtype=np.float64) / N
+    # if nu == 0:
+        
 
     for it in range(n_iters):
         x = sample_base(batch_size, dim, rng)       # (B, dim)
